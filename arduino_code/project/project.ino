@@ -1,131 +1,197 @@
-//sending data to server
-
-
 #include <Wire.h>
-#include <MPU6050.h>
-#include <ArduinoJson.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <ArduinoJson.h>
 
-MPU6050 mpu;
+#include <Adafruit_HMC5883_U.h>
 
-const int SAMPLE_RATE = 10;
-const int WINDOW_SIZE = 75;
-const int NUM_AXES = 6;
+#include "libraries/I2Cdev/I2Cdev.h"
+#include "libraries/MPU6050/MPU6050.h"
 
-float dataBuffer[WINDOW_SIZE][NUM_AXES];
-int sampleCount;
 
-const size_t JSON_DOC_SIZE = 16384;
+extern TwoWire Wire1;
+
+MPU6050 mpu1(0x68, &Wire); 
+MPU6050 mpu2(0x69, &Wire); 
+MPU6050 mpu3(0x68, &Wire1);
+MPU6050 mpu4(0x69, &Wire1);
+
+Adafruit_HMC5883_Unified magnetometer = Adafruit_HMC5883_Unified(12345);
+
+const char* WIFI_SSID = "wifi_network";
+const char* WIFI_PASS = "wifi_pasword";
+const char* SERVER_URL = "127.0.0.1"; 
+
+const bool IS_TRAINING_MODE = true; 
+
+const int BUTTON_PIN = 32;
+const int TOTAL_AXES = 27;
+const int SAMPLE_RATE_MS = 10; 
+const int WINDOW_SIZE = 100;
+const size_t JSON_DOC_SIZE = 16384; 
+
+enum State { IDLE, RECORDING, SENDING };
+State currentState = IDLE;
+
+float data_buffer[WINDOW_SIZE][TOTAL_AXES]; 
+int sample_count = 0; 
+unsigned long last_sample_time = 0;
+
+void connectWiFi() {
+  Serial.print("Connecting to WiFi...");
+  WiFi.begin(WIFI_SSID, WIFI_PASS); 
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected! IP: " + WiFi.localIP().toString());
+}
+
+void readAllSensors(float data_row[]) {
+
+  int16_t ax, ay, az, gx, gy, gz;
+  int axis_index = 0;
+  sensors_event_t event;
+  
+  //mpu1
+  mpu1.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  data_row[axis_index++] = (float)ax;
+  data_row[axis_index++] = (float)ay;
+  data_row[axis_index++] = (float)az;
+  data_row[axis_index++] = (float)gx;
+  data_row[axis_index++] = (float)gy;
+  data_row[axis_index++] = (float)gz;
+
+  //mpu2
+  mpu2.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  data_row[axis_index++] = (float)ax;
+  data_row[axis_index++] = (float)ay;
+  data_row[axis_index++] = (float)az;
+  data_row[axis_index++] = (float)gx;
+  data_row[axis_index++] = (float)gy;
+  data_row[axis_index++] = (float)gz;
+  
+  //mpu3
+  mpu3.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  data_row[axis_index++] = (float)ax;
+  data_row[axis_index++] = (float)ay;
+  data_row[axis_index++] = (float)az;
+  data_row[axis_index++] = (float)gx;
+  data_row[axis_index++] = (float)gy;
+  data_row[axis_index++] = (float)gz;
+
+  //mpu4
+  mpu4.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  data_row[axis_index++] = (float)ax;
+  data_row[axis_index++] = (float)ay;
+  data_row[axis_index++] = (float)az;
+  data_row[axis_index++] = (float)gx;
+  data_row[axis_index++] = (float)gy;
+  data_row[axis_index++] = (float)gz;
+
+  //magnetometer
+  magnetometer.getEvent(&event);
+  data_row[axis_index++] = event.magnetic.x; 
+  data_row[axis_index++] = event.magnetic.y;
+  data_row[axis_index++] = event.magnetic.z;
+  
+  
+  
+}
+
+void sendDataToServer() {
+  if (WiFi.status() != WL_CONNECTED) {
+    connectWiFi();
+    if (WiFi.status() != WL_CONNECTED) return;
+  }
+  
+  StaticJsonDocument<JSON_DOC_SIZE> doc;
+  
+  doc["device_id"] = "SMART_GLOVE_ESP32"; 
+  doc["mode"] = (IS_TRAINING_MODE) ? "TRAINING" : "RECOGNITION";
+  doc["sample_count"] = sample_count; 
+  
+  JsonArray data_array = doc.createNestedArray("data");
+  for (int i = 0; i < sample_count; i++) { // Використовуємо sample_count
+    JsonArray sample = data_array.createNestedArray();
+    for (int j = 0; j < TOTAL_AXES; j++) {
+      sample.add(data_buffer[i][j]); 
+    }
+  }
+
+  String payload_json;
+  serializeJson(doc, payload_json);
+  
+  HTTPClient http;
+  http.begin(SERVER_URL); 
+  http.addHeader("Content-Type", "application/json"); 
+  
+  int httpResponseCode = http.POST(payload_json);
+  
+  if (httpResponseCode > 0) {
+    Serial.println("Success! Response: " + http.getString());
+  } else {
+    Serial.println("HTTP Error: " + String(httpResponseCode));
+  }
+  http.end();
+}
 
 void setup() {
   Serial.begin(115200);
-  Wire.begin();
+  delay(1000);
 
-  Serial.println("Initializing MPU6050");
-  if(!mpu.begin(MPU6050_SCALE_2000DPS, MPU6050_RANGE_2G )){
-    Serial.println("Can not found MPU6050-------Check the connection-------");
-    while(true);
-  }
-  mpu.calibrateGyro();
-  mpu.setThreshold();
+  Wire.begin(); 
+  Wire1.begin(19, 18); 
+  
+  pinMode(BUTTON_PIN, INPUT_PULLDOWN); 
+  
 
-  const char* ssid = "ssid";
-  const char* password = "password";
-
-  wifi.begin(ssid, password));
-
-  Serial.println("Connecting to wifi");
-  while(wifi.status() != WL_CONNECTED)
-  {
-    Serial.print(".");
-    delay(200);
-  }
-
-  Serial.println("Connected to wifi");
-  Serial.print("IP:");
-  Serial.println(wifi.localIP());
-
+  connectWiFi();
+  Serial.println("System initialized. Current mode: " + String((IS_TRAINING_MODE) ? "TRAINING" : "RECOGNITION"));
+  Serial.println("Press button to START recording.");
 }
 
 void loop() {
-  static unsigned long lastSampleTime;
-
-  if(millis() - lastSampleTime >= SAMPLE_RATE)
-  {
-    sensor_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
-
-    if(sampleCount < WINDOW_SIZE)
-    {
-      dataBuffer[sampleCount][0] = a.acceleration.x();
-      dataBuffer[sampleCount][1] = a.acceleration.y();
-      dataBuffer[sampleCount][2] = a.acceleration.z();
-      dataBuffer[sampleCount][3] = g.gyro().x();
-      dataBuffer[sampleCount][4] = g.gyro().y();
-      dataBuffer[sampleCount][5] = g.gyro().z();
-
-      sampleCount++;
-
-    }
-
-    lastSampleTomi = millis();
-
-    if(sampleCount >= WINDOW_SIZE)
-    {
-      if(wifi.status() == WL_CONNECTED)
-      {
-        sendDataToServer();
+  static unsigned long last_sample_time = 0;
+  int buttonState = digitalRead(BUTTON_PIN);
+  
+  if (buttonState == HIGH) {
+    delay(20);
+    if (digitalRead(BUTTON_PIN) == HIGH) {
+        
+      if (currentState == IDLE) {
+        sample_count = 0;
+        currentState = RECORDING;
+        Serial.println(">>> RECORDING STARTED <<<");
+        
+      } else if (currentState == RECORDING) {
+        currentState = SENDING;
+        Serial.print(">>> RECORDING STOPPED. Samples collected: ");
+        Serial.println(sample_count);
       }
-
-      sampleCount = 0;
+      
+      while(digitalRead(BUTTON_PIN) == HIGH); 
     }
   }
-
-}
-
-void sendDataToServer()
-{
-  StaticJsonDocument<JSON_DOC_SIZE> doc;
-
-  doc["devic_id"] = "ESP32_GLOVE_02";
-
-  JsonArra dataArray = doc.createNestedArray("data");
-
-  for(int i = 0; i < WINDOW_SIZE; i++)
-  {
-    JsonArray sample = dataArraiy.createNestedArray();
-
-    for(int j = 0; j < NUM_AXES; j++)
-    {
-      sample.add(dataBuffer[i][j]);
-    }
-  }
-
-  String payloadJson;
-  serializeJson(doc, payloadJson);
-
-  HTTPClient http;
-
-  http.begin("server");
-  http.addHeader("Content-Type", "application/json");
-
-  int httpResponceCode = http.POST(payloadJson);
-
-  if(http.responcecode > 0)
-  {
-    String responce = http.getString();
-    Serial.print("HTTP code: ");
-    Serial.println(httpResponceCode);
-    Serial.print("Server response: ");
-    Serial.println(responce);
+  
+  if (currentState == RECORDING && (millis() - last_sample_time >= SAMPLE_RATE_MS)) {
     
+    if (sample_count < WINDOW_SIZE) {
+      readAllSensors(data_buffer[sample_count]);
+      sample_count++;
+      Serial.print("Sample: "); Serial.println(sample_count);
+    } else {
+      currentState = SENDING;
+      Serial.println("!!! WINDOW FULL. AUTO-SENDING !!!");
+    }
+    last_sample_time = millis();
   }
-  else
-  {
-    Serial.print("HTTP error: ");
-    Serial.println(httpResponceCode);
-  }
-  http.end();
 
+  if (currentState == SENDING) {
+    Serial.println("--- Sending Data to Server ---");
+    sendDataToServer();
+    
+    currentState = IDLE; 
+    Serial.println("Cycle complete. System is now IDLE. Press button to START again.");
+  }
 }
