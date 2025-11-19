@@ -1,197 +1,152 @@
 #include <Wire.h>
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
+#include "BluetoothSerial.h"
 
-#include <Adafruit_HMC5883_U.h>
+BluetoothSerial bluetooth;
 
-#include "libraries/I2Cdev/I2Cdev.h"
-#include "libraries/MPU6050/MPU6050.h"
+// -------------------
+// Адреси MPU
+// -------------------
+#define MPU1_ADDR 0x68
+#define MPU2_ADDR 0x69
+#define MPU3_ADDR 0x69  // на Wire1
 
 
-extern TwoWire Wire1;
-
-MPU6050 mpu1(0x68, &Wire); 
-MPU6050 mpu2(0x69, &Wire); 
-MPU6050 mpu3(0x68, &Wire1);
-MPU6050 mpu4(0x69, &Wire1);
-
-Adafruit_HMC5883_Unified magnetometer = Adafruit_HMC5883_Unified(12345);
-
-const char* WIFI_SSID = "wifi_network";
-const char* WIFI_PASS = "wifi_pasword";
-const char* SERVER_URL = "127.0.0.1"; 
-
-const bool IS_TRAINING_MODE = true; 
-
-const int BUTTON_PIN = 32;
-const int TOTAL_AXES = 27;
-const int SAMPLE_RATE_MS = 10; 
-const int WINDOW_SIZE = 100;
-const size_t JSON_DOC_SIZE = 16384; 
+// -------------------
+// Параметри
+// -------------------
+const int TOTAL_AXES = 18;
+const int WINDOW_SIZE = 200;
+const int SAMPLE_RATE_MS = 10;
 
 enum State { IDLE, RECORDING, SENDING };
 State currentState = IDLE;
 
-float data_buffer[WINDOW_SIZE][TOTAL_AXES]; 
-int sample_count = 0; 
+float data_buffer[WINDOW_SIZE][TOTAL_AXES];
+int sample_count = 0;
 unsigned long last_sample_time = 0;
 
-void connectWiFi() {
-  Serial.print("Connecting to WiFi...");
-  WiFi.begin(WIFI_SSID, WIFI_PASS); 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nConnected! IP: " + WiFi.localIP().toString());
+// -------------------
+// Функції для MPU
+// -------------------
+bool readMPU(TwoWire &bus, uint8_t addr,
+             int16_t &ax, int16_t &ay, int16_t &az,
+             int16_t &gx, int16_t &gy, int16_t &gz)
+{
+  bus.beginTransmission(addr);
+  bus.write(0x3B); // ACCEL_XOUT_H
+  if (bus.endTransmission(false) != 0) return false;
+
+  bus.requestFrom(addr, (uint8_t)14);
+  if (bus.available() < 14) return false;
+
+  ax = (bus.read() << 8) | bus.read();
+  ay = (bus.read() << 8) | bus.read();
+  az = (bus.read() << 8) | bus.read();
+
+  bus.read(); bus.read(); // temp
+
+  gx = (bus.read() << 8) | bus.read();
+  gy = (bus.read() << 8) | bus.read();
+  gz = (bus.read() << 8) | bus.read();
+
+  return true;
 }
 
+void initMPU(TwoWire &bus, uint8_t addr) {
+  bus.beginTransmission(addr);
+  bus.write(0x6B); // PWR_MGMT_1
+  bus.write(0x00); // wake up
+  bus.endTransmission();
+  delay(10);
+}
+
+// -------------------
+// Читання всіх MPU
+// -------------------
 void readAllSensors(float data_row[]) {
-
   int16_t ax, ay, az, gx, gy, gz;
-  int axis_index = 0;
-  sensors_event_t event;
-  
-  //mpu1
-  mpu1.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-  data_row[axis_index++] = (float)ax;
-  data_row[axis_index++] = (float)ay;
-  data_row[axis_index++] = (float)az;
-  data_row[axis_index++] = (float)gx;
-  data_row[axis_index++] = (float)gy;
-  data_row[axis_index++] = (float)gz;
+  int idx = 0;
 
-  //mpu2
-  mpu2.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-  data_row[axis_index++] = (float)ax;
-  data_row[axis_index++] = (float)ay;
-  data_row[axis_index++] = (float)az;
-  data_row[axis_index++] = (float)gx;
-  data_row[axis_index++] = (float)gy;
-  data_row[axis_index++] = (float)gz;
-  
-  //mpu3
-  mpu3.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-  data_row[axis_index++] = (float)ax;
-  data_row[axis_index++] = (float)ay;
-  data_row[axis_index++] = (float)az;
-  data_row[axis_index++] = (float)gx;
-  data_row[axis_index++] = (float)gy;
-  data_row[axis_index++] = (float)gz;
+  if(readMPU(Wire, MPU1_ADDR, ax, ay, az, gx, gy, gz)) {
+    data_row[idx++] = ax; data_row[idx++] = ay; data_row[idx++] = az;
+    data_row[idx++] = gx; data_row[idx++] = gy; data_row[idx++] = gz;
+  }
 
-  //mpu4
-  mpu4.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-  data_row[axis_index++] = (float)ax;
-  data_row[axis_index++] = (float)ay;
-  data_row[axis_index++] = (float)az;
-  data_row[axis_index++] = (float)gx;
-  data_row[axis_index++] = (float)gy;
-  data_row[axis_index++] = (float)gz;
+  if(readMPU(Wire, MPU2_ADDR, ax, ay, az, gx, gy, gz)) {
+    data_row[idx++] = ax; data_row[idx++] = ay; data_row[idx++] = az;
+    data_row[idx++] = gx; data_row[idx++] = gy; data_row[idx++] = gz;
+  }
 
-  //magnetometer
-  magnetometer.getEvent(&event);
-  data_row[axis_index++] = event.magnetic.x; 
-  data_row[axis_index++] = event.magnetic.y;
-  data_row[axis_index++] = event.magnetic.z;
-  
-  
-  
+  if(readMPU(Wire1, MPU3_ADDR, ax, ay, az, gx, gy, gz)) {
+    data_row[idx++] = ax; data_row[idx++] = ay; data_row[idx++] = az;
+    data_row[idx++] = gx; data_row[idx++] = gy; data_row[idx++] = gz;
+  }
 }
 
-void sendDataToServer() {
-  if (WiFi.status() != WL_CONNECTED) {
-    connectWiFi();
-    if (WiFi.status() != WL_CONNECTED) return;
-  }
-  
-  StaticJsonDocument<JSON_DOC_SIZE> doc;
-  
-  doc["device_id"] = "SMART_GLOVE_ESP32"; 
-  doc["mode"] = (IS_TRAINING_MODE) ? "TRAINING" : "RECOGNITION";
-  doc["sample_count"] = sample_count; 
-  
-  JsonArray data_array = doc.createNestedArray("data");
-  for (int i = 0; i < sample_count; i++) { // Використовуємо sample_count
-    JsonArray sample = data_array.createNestedArray();
+// -------------------
+// Відправка даних
+// -------------------
+void sendData() {
+  for (int i = 0; i < sample_count; i++) {
     for (int j = 0; j < TOTAL_AXES; j++) {
-      sample.add(data_buffer[i][j]); 
+      bluetooth.print(data_buffer[i][j]);
+      if (j < TOTAL_AXES - 1) bluetooth.print(',');
     }
+    bluetooth.print('\n');
   }
-
-  String payload_json;
-  serializeJson(doc, payload_json);
-  
-  HTTPClient http;
-  http.begin(SERVER_URL); 
-  http.addHeader("Content-Type", "application/json"); 
-  
-  int httpResponseCode = http.POST(payload_json);
-  
-  if (httpResponseCode > 0) {
-    Serial.println("Success! Response: " + http.getString());
-  } else {
-    Serial.println("HTTP Error: " + String(httpResponseCode));
-  }
-  http.end();
+  bluetooth.println("END");
 }
 
+// -------------------
+// Setup
+// -------------------
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  Wire.begin(); 
-  Wire1.begin(19, 18); 
-  
-  pinMode(BUTTON_PIN, INPUT_PULLDOWN); 
-  
+  Wire.begin(21, 22);
+  Wire1.begin(18, 19);
 
-  connectWiFi();
-  Serial.println("System initialized. Current mode: " + String((IS_TRAINING_MODE) ? "TRAINING" : "RECOGNITION"));
-  Serial.println("Press button to START recording.");
+  initMPU(Wire, MPU1_ADDR);
+  initMPU(Wire, MPU2_ADDR);
+  initMPU(Wire1, MPU3_ADDR);
+
+  bluetooth.begin("SmartGlove");
+  Serial.println("System ready. Waiting for Bluetooth command...");
 }
 
+// -------------------
+// Loop
+// -------------------
 void loop() {
-  static unsigned long last_sample_time = 0;
-  int buttonState = digitalRead(BUTTON_PIN);
-  
-  if (buttonState == HIGH) {
-    delay(20);
-    if (digitalRead(BUTTON_PIN) == HIGH) {
-        
-      if (currentState == IDLE) {
-        sample_count = 0;
-        currentState = RECORDING;
-        Serial.println(">>> RECORDING STARTED <<<");
-        
-      } else if (currentState == RECORDING) {
-        currentState = SENDING;
-        Serial.print(">>> RECORDING STOPPED. Samples collected: ");
-        Serial.println(sample_count);
-      }
-      
-      while(digitalRead(BUTTON_PIN) == HIGH); 
+  if(bluetooth.available()) {
+    String cmd = bluetooth.readStringUntil('\n');
+    cmd.trim();
+
+    if(cmd == "START") {
+      currentState = RECORDING;
+      sample_count = 0;
+      Serial.println("Recording started");
+    } else if(cmd == "STOP") {
+      currentState = SENDING;
+      Serial.println("Recording stopped");
     }
   }
-  
-  if (currentState == RECORDING && (millis() - last_sample_time >= SAMPLE_RATE_MS)) {
-    
-    if (sample_count < WINDOW_SIZE) {
+
+  if(currentState == RECORDING && millis() - last_sample_time >= SAMPLE_RATE_MS) {
+    if(sample_count < WINDOW_SIZE) {
       readAllSensors(data_buffer[sample_count]);
       sample_count++;
-      Serial.print("Sample: "); Serial.println(sample_count);
     } else {
       currentState = SENDING;
-      Serial.println("!!! WINDOW FULL. AUTO-SENDING !!!");
+      Serial.println("Buffer full — sending data");
     }
     last_sample_time = millis();
   }
 
-  if (currentState == SENDING) {
-    Serial.println("--- Sending Data to Server ---");
-    sendDataToServer();
-    
-    currentState = IDLE; 
-    Serial.println("Cycle complete. System is now IDLE. Press button to START again.");
+  if(currentState == SENDING) {
+    sendData();
+    currentState = IDLE;
+    Serial.println("Cycle complete — system idle");
   }
 }
