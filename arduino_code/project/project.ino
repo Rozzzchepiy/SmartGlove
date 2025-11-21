@@ -15,7 +15,7 @@ BluetoothSerial bluetooth;
 // Параметри
 // -------------------
 const int TOTAL_AXES = 18;
-const int WINDOW_SIZE = 200;
+const int WINDOW_SIZE = 1000;
 const int SAMPLE_RATE_MS = 10;
 
 enum State { IDLE, RECORDING, SENDING };
