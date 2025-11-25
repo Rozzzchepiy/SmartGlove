@@ -10,8 +10,8 @@ from tensorflow.keras.models import load_model
 # Цільова довжина послідовності після обробки (залишається 75)
 SEQUENCE_LENGTH = 75
 
-# Очікувана кількість колонок (ознак) від сенсорів (оновлено з 27 до 39)
-EXPECTED_COLUMNS = 39
+# Очікувана кількість колонок (ознак) від сенсорів (оновлено з 39 до 18)
+EXPECTED_COLUMNS = 18
 
 # Нові імена файлів
 MODEL_NAME = "gesture_lstm_model.h5"
