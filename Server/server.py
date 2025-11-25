@@ -111,12 +111,12 @@ def get_gesture_data():
         
     df = pd.DataFrame(sequence_data)
     
-    # --- Приведення даних до єдиної довжини ---
-    df_resampled = resample_sequence(df, SEQUENCE_LENGTH)
-    
     if model and scaler and classes is not None:
         # --- РЕЖИМ РОЗПІЗНАВАННЯ (за новою логікою) ---
         try:
+            # --- Приведення даних до єдиної довжини ---
+            df_resampled = resample_sequence(df, SEQUENCE_LENGTH)
+            
             # 1. Перетворюємо дані в numpy масив
             input_data = df_resampled.values.astype(float)
             
@@ -148,7 +148,7 @@ def get_gesture_data():
     else:
         # --- РЕЖИМ ЗБОРУ ДАНИХ (логіка не змінилась) ---
         print("Сервер в режимі збору даних, модель не завантажена")
-        print(f"Отримано жест з {len(df)} записів, нормалізовано до {len(df_resampled)}")
+        print(f"Отримано жест з {len(df)} записів")
         
         label = input("Введіть назву жесту: ").strip().lower()
         
@@ -164,7 +164,7 @@ def get_gesture_data():
                 i += 1
                 
             filepath = f"{data_dir}/{label}_{i}.csv"
-            df_resampled.to_csv(filepath, index=False)
+            df.to_csv(filepath, index=False)
             
             print(f"Нормалізовані дані збережено у файл: {filepath}")
             
