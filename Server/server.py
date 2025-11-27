@@ -5,18 +5,22 @@ import pandas as pd
 from flask import Flask, request, jsonify
 from tensorflow.keras.models import load_model
 
-# --- НАЛАШТУВАННЯ ВІДПОВІДНО ДО НОВОЇ МОДЕЛІ ---
-
-# Цільова довжина послідовності після обробки (залишається 75)
+# Цільова довжина послідовності
 SEQUENCE_LENGTH = 75
 
-# Очікувана кількість колонок (ознак) від сенсорів (оновлено з 39 до 18)
+# Очікувана кількість колонок
 EXPECTED_COLUMNS = 18
 
-# Нові імена файлів
-MODEL_NAME = "gesture_lstm_model.h5"
-SCALER_NAME = "gesture_scaler.pkl"
-LABELS_NAME = "gesture_labels.npy"
+# Абсолютний шлях до папки Model/
+MODEL_FOLDER = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "Model")
+)
+
+# Повні шляхи до файлів моделі
+MODEL_NAME = os.path.join(MODEL_FOLDER, "gesture_lstm_model.h5")
+SCALER_NAME = os.path.join(MODEL_FOLDER, "gesture_scaler.pkl")
+LABELS_NAME = os.path.join(MODEL_FOLDER, "gesture_labels.npy")
+
 
 app = Flask(__name__)
 
