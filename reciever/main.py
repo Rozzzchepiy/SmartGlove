@@ -2,17 +2,22 @@ import serial
 import json
 import threading
 import tkinter as tk
+import keyboard
 from datetime import datetime
 import time
+import requests
 
 SERIAL_PORT = 'COM15'
 BAUD_RATE = 115200
 TOTAL_AXES = 18
 
+SERVER_URL = "http://127.0.0.1:5000/data"   # <-- заміниш на свій IP коли буде ESP або інший ПК
+
 data_buffer = []
 recording = False
 ser = None
-lock = threading.Lock()   # захист доступу до буфера
+lock = threading.Lock()
+
 
 def parse_line(line):
     try:
@@ -22,6 +27,7 @@ def parse_line(line):
         return values
     except:
         return None
+
 
 def read_serial():
     global recording
@@ -33,72 +39,89 @@ def read_serial():
             continue
 
         if not line:
-            time.sleep(0.001)  # не навантажує CPU
             continue
 
-        # пишемо лише коли recording = True
         if recording:
             sample = parse_line(line)
             if sample:
                 with lock:
                     data_buffer.append(sample)
 
-        # Якщо ESP32 посилає END (не обов'язково)
-        if line == "END":
-            pass  # не зберігаємо тут, щоб не ламати логіку STOP
 
-def save_data():
-    with lock:
-        if not data_buffer:
-            print("No data to save.")
-            return
+def send_to_server(sequence):
+    try:
+        response = requests.post(
+            SERVER_URL,
+            json={"gesture_data": sequence},
+            timeout=5
+        )
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"sensor_data_{timestamp}.json"
+        print("\n=== SERVER RESPONSE ===")
+        print(response.text)
+        print("=======================\n")
 
-        with open(filename, "w") as f:
-            json.dump(data_buffer, f, indent=4)
-        
-        print(f"Data saved to {filename} ({len(data_buffer)} samples)")
+    except Exception as e:
+        print("\nПОМИЛКА НАДСИЛАННЯ:", e, "\n")
+
 
 def start_recording():
     global recording
+    if recording:
+        return
     with lock:
         data_buffer.clear()
     recording = True
-    print("Recording started")
+    print("\n=== RECORDING STARTED ===\n")
     ser.write(b'START\n')
+
 
 def stop_recording():
     global recording
+    if not recording:
+        return
     recording = False
-    print("Stopping...")
+    print("\n=== RECORDING STOPPED ===")
     ser.write(b'STOP\n')
 
-    # даємо ESP32 час на надсилання останніх ліній
-    time.sleep(0.3)
+    time.sleep(0.2)
 
-    save_data()
+    with lock:
+        sequence = list(data_buffer)
+
+    # --- ВІДПРАВКА НА СЕРВЕР ---
+    if len(sequence) > 0:
+        print(f"Надсилаю {len(sequence)} рядків на сервер…")
+        send_to_server(sequence)
 
     with lock:
         data_buffer.clear()
-    print("Recording stopped and data saved.")
 
-# GUI
+    print("Готово до наступного запису.\n")
+
+
+def listen_keyboard():
+    print("ENTER = старт/стоп")
+
+    while True:
+        keyboard.wait("enter")
+        if recording:
+            stop_recording()
+        else:
+            start_recording()
+        time.sleep(0.2)
+
+
+# ---------------- MAIN ----------------
+
+ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
+
+threading.Thread(target=read_serial, daemon=True).start()
+threading.Thread(target=listen_keyboard, daemon=True).start()
+
 root = tk.Tk()
 root.title("MPU Recorder")
 
-start_btn = tk.Button(root, text="Start Recording", command=start_recording)
-start_btn.pack(padx=20, pady=10)
-
-stop_btn = tk.Button(root, text="Stop Recording", command=stop_recording)
-stop_btn.pack(padx=20, pady=10)
-
-# Відкриття порту
-ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
-
-# Потік читання UART
-thread = threading.Thread(target=read_serial, daemon=True)
-thread.start()
+tk.Button(root, text="Start Recording", command=start_recording).pack(padx=20, pady=10)
+tk.Button(root, text="Stop Recording", command=stop_recording).pack(padx=20, pady=10)
 
 root.mainloop()
