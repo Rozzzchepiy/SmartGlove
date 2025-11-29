@@ -6,7 +6,7 @@ from flask import Flask, request, jsonify
 from tensorflow.keras.models import load_model
 
 # Цільова довжина послідовності
-SEQUENCE_LENGTH = 75
+SEQUENCE_LENGTH = 200
 
 # Очікувана кількість колонок
 EXPECTED_COLUMNS = 18

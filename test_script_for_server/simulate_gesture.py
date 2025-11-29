@@ -8,11 +8,11 @@ import time
 SERVER_URL = "http://127.0.0.1:5000/data" # Адреса вашого локального сервера
 
 
-NUM_FEATURES = 39
+NUM_FEATURES = 18
 
 # Діапазон для генерації випадкової довжини послідовності
 MIN_GESTURE_LENGTH = 20
-MAX_GESTURE_LENGTH = 150
+MAX_GESTURE_LENGTH = 500
 
 
 def generate_fake_gesture_data(length: int):
