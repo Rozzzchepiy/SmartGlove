@@ -6,7 +6,7 @@ from flask import Flask, request, jsonify
 from tensorflow.keras.models import load_model
 
 # Цільова довжина послідовності
-SEQUENCE_LENGTH = 200
+SEQUENCE_LENGTH = 50
 
 # Очікувана кількість колонок
 EXPECTED_COLUMNS = 18
@@ -17,7 +17,7 @@ MODEL_FOLDER = os.path.abspath(
 )
 
 # Повні шляхи до файлів моделі
-MODEL_NAME = os.path.join(MODEL_FOLDER, "gesture_lstm_model.h5")
+MODEL_NAME = os.path.join(MODEL_FOLDER, "gesture_lstm32_model.keras")
 SCALER_NAME = os.path.join(MODEL_FOLDER, "gesture_scaler.pkl")
 LABELS_NAME = os.path.join(MODEL_FOLDER, "gesture_labels.npy")
 
