@@ -1,1 +1,2 @@
+# Генеруємо requirements.txt
 pipreqs . --encoding=utf-8 --ignore .venv,__pycache__,build,dist
