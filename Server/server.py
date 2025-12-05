@@ -74,8 +74,8 @@ def load_ai_components():
     
     try:
         # Перевіряємо наявність всіх необхідних файлів
-        if all(os.path.exists(f) for f in [MODEL_NAME, SCALER_NAME, LABELS_NAME]):
-        #if 1 < 0: # Тимчасово вимикаємо перевірку файлів для навчання без моделі
+        #if all(os.path.exists(f) for f in [MODEL_NAME, SCALER_NAME, LABELS_NAME]):
+        if 1 < 0: # Тимчасово вимикаємо перевірку файлів для навчання без моделі
             scaler = joblib.load(SCALER_NAME)
             print("Скалер завантажено")
             
