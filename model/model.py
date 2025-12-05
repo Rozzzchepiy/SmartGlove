@@ -20,7 +20,7 @@ from Server.server import (
 
 # Шлях до gesture_data
 gesture_data_path = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "Server", "gesture_data")
+    os.path.join(os.path.dirname(__file__), "..", "gesture_data")
 )
 
 # -------------------------------
