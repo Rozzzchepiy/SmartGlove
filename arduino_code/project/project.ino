@@ -1,14 +1,14 @@
 #include <Wire.h>
 #include "BluetoothSerial.h"
 
-BluetoothSerial SerialBT; // Створюємо об'єкт Bluetooth
+BluetoothSerial SerialBT; 
 
 // -------------------
 // Адреси MPU
 // -------------------
 #define MPU1_ADDR 0x68
 #define MPU2_ADDR 0x69
-#define MPU3_ADDR 0x69 // на Wire1
+#define MPU3_ADDR 0x69 
 
 const int TOTAL_AXES = 18;
 const int WINDOW_SIZE = 1000;
@@ -22,7 +22,6 @@ float data_buffer[WINDOW_SIZE][TOTAL_AXES];
 int sample_count = 0;
 unsigned long last_sample_time = 0;
 
-// Функції MPU (скорочено для економії місця, логіка та ж)
 bool readMPU(TwoWire &bus, uint8_t addr, int16_t &ax, int16_t &ay, int16_t &az, int16_t &gx, int16_t &gy, int16_t &gz) {
   bus.beginTransmission(addr); bus.write(0x3B);
   if (bus.endTransmission(false) != 0) return false;
@@ -41,7 +40,6 @@ void initMPU(TwoWire &bus, uint8_t addr) {
 void readAllSensors(float data_row[]) {
   int16_t ax, ay, az, gx, gy, gz;
   int idx = 0;
-  // Якщо датчик не відповідає, пишемо 0, щоб не зміщувати стовпці CSV
   if(readMPU(Wire, MPU1_ADDR, ax, ay, az, gx, gy, gz)) { data_row[idx++] = ax; data_row[idx++] = ay; data_row[idx++] = az; data_row[idx++] = gx; data_row[idx++] = gy; data_row[idx++] = gz; } else { idx+=6; }
   if(readMPU(Wire, MPU2_ADDR, ax, ay, az, gx, gy, gz)) { data_row[idx++] = ax; data_row[idx++] = ay; data_row[idx++] = az; data_row[idx++] = gx; data_row[idx++] = gy; data_row[idx++] = gz; } else { idx+=6; }
   if(readMPU(Wire1, MPU3_ADDR, ax, ay, az, gx, gy, gz)) { data_row[idx++] = ax; data_row[idx++] = ay; data_row[idx++] = az; data_row[idx++] = gx; data_row[idx++] = gy; data_row[idx++] = gz; } else { idx+=6; }
@@ -56,17 +54,15 @@ void sendData() {
     }
     SerialBT.print('\n');
     
-    // ВАЖЛИВО: Bluetooth повільніший за USB. Робимо паузу кожні 20 рядків.
     if (i % 20 == 0) delay(10);
   }
-  SerialBT.println("END"); // Маркер кінця
+  SerialBT.println("END"); 
   Serial.println("Bluetooth: Transfer complete.");
 }
 
 void setup() {
-  Serial.begin(115200); // USB для відладки
+  Serial.begin(115200); 
   
-  // Запуск Bluetooth. Ім'я пристрою "SmartGlove_ESP32"
   SerialBT.begin("SmartGlove_ESP32"); 
   Serial.println("Bluetooth Started! Pair with 'SmartGlove_ESP32'");
 
@@ -74,11 +70,12 @@ void setup() {
   Wire1.begin(18, 19);
   initMPU(Wire, MPU1_ADDR);
   initMPU(Wire, MPU2_ADDR);
+
   initMPU(Wire1, MPU3_ADDR);
+  
 }
 
 void loop() {
-  // Читаємо команди з Bluetooth
   if(SerialBT.available()) {
     String cmd = SerialBT.readStringUntil('\n');
     cmd.trim();
@@ -95,21 +92,19 @@ void loop() {
     }
   }
 
-  // Запис даних
   if(currentState == RECORDING && millis() - last_sample_time >= SAMPLE_RATE_MS) {
     if(sample_count < WINDOW_SIZE) {
       readAllSensors(data_buffer[sample_count]);
       sample_count++;
     } else {
-      currentState = SENDING; // Буфер повний
+      currentState = SENDING; 
     }
     last_sample_time = millis();
   }
 
-  // Відправка
   if(currentState == SENDING) {
     sendData();
     currentState = IDLE;
-    sample_count = 0; // Очищення після відправки
+    sample_count = 0; 
   }
 }
