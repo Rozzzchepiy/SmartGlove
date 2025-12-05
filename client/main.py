@@ -33,10 +33,10 @@ def send_to_server():
     global data_buffer
     
     if not data_buffer:
-        print("⚠️ Буфер порожній, нічого відправляти.")
+        print("Буфер порожній, нічого відправляти.")
         return
 
-    print(f"📡 Відправка {len(data_buffer)} записів на сервер...")
+    print(f"Відправка {len(data_buffer)} записів на сервер...")
     
     # Формуємо JSON згідно вимог сервера
     payload = {"gesture_data": data_buffer}
@@ -48,7 +48,7 @@ def send_to_server():
         if response.status_code == 200:
             result = response.json()
             
-            # Отримання відповіді (наприклад: {"prediction": "wave", "confidence": 0.98})
+            # Отримання відповіді
             gesture = result.get("prediction", "Невідомо")
             confidence = result.get("confidence", 0.0)
             
@@ -79,7 +79,7 @@ def read_serial():
                 line = ser.readline().decode('utf-8', errors='ignore').strip()
                 if not line: continue
 
-                # Якщо ESP32 каже END, значить передача завершена -> відправляємо на сервер
+                # Якщо ESP32 каже END, значить передача завершена - відправляємо на сервер
                 if line == "END":
                     print("Отримано сигнал END. Обробка...")
                     send_to_server()
@@ -103,7 +103,7 @@ def start_recording():
     is_collecting = True
     
     lbl_result.config(text="Запис...", fg="black")
-    status_indicator.config(bg="#00ff00") # Зелений індикатор
+    status_indicator.config(bg="#00ff00") 
     
     print("--> Sending START")
     try:
@@ -120,29 +120,25 @@ def stop_recording():
     except:
         print("Помилка відправки команди")
 
-# --- GUI ---
 root = tk.Tk()
 root.title("Gesture Client")
 root.geometry("350x300")
 
-# Індикатор статусу (квадратик)
+# Індикатор статусу
 status_indicator = tk.Label(root, width=5, bg="gray")
 status_indicator.pack(pady=5)
 
 lbl_info = tk.Label(root, text=f"Port: {SERIAL_PORT} -> Server: Localhost", fg="gray")
 lbl_info.pack()
 
-# Велика кнопка Старт
 btn_start = tk.Button(root, text="ПОЧАТИ ЗАПИС (START)", command=start_recording, 
                       bg="#ddffdd", font=("Arial", 12, "bold"), height=2)
 btn_start.pack(fill='x', padx=20, pady=10)
 
-# Велика кнопка Стоп
 btn_stop = tk.Button(root, text="СТОП І ВІДПРАВИТИ", command=stop_recording, 
                      bg="#ffdddd", font=("Arial", 12, "bold"), height=2)
 btn_stop.pack(fill='x', padx=20, pady=5)
 
-# Поле для результату
 lbl_result = tk.Label(root, text="Очікування...", font=("Helvetica", 18, "bold"), fg="blue")
 lbl_result.pack(pady=20)
 

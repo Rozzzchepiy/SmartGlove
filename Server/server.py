@@ -5,13 +5,10 @@ import pandas as pd
 from flask import Flask, request, jsonify
 from tensorflow.keras.models import load_model
 
-# Цільова довжина послідовності
 SEQUENCE_LENGTH = 50
 
-# Очікувана кількість колонок
 EXPECTED_COLUMNS = 18
 
-# Абсолютний шлях до папки Model/
 MODEL_FOLDER = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "Model")
 )
@@ -24,7 +21,6 @@ LABELS_NAME = os.path.join(MODEL_FOLDER, "gesture_labels.npy")
 
 app = Flask(__name__)
 
-# Глобальні змінні для моделі, скейлера та міток
 model = None
 scaler = None
 classes = None
@@ -47,13 +43,13 @@ def resample_sequence(df: pd.DataFrame, target_length: int) -> pd.DataFrame:
     df = df.reset_index(drop=True)
     current_length = len(df)
 
-    # якщо даних менше → інтерполюємо (новий, надійний метод)
+    # якщо даних менше - інтерполюємо
     if current_length < target_length:
-        # 1. Створюємо новий дробовий індекс, що відповідає цільовій довжині
+        # Створюємо новий дробовий індекс, що відповідає цільовій довжині
         new_index = np.linspace(0, current_length - 1, target_length)
         
-        # 2. Розширюємо DataFrame до нового індексу. 
-        #    Точки, що не існували, заповняться значеннями NaN.
+        # Розширюємо DataFrame до нового індексу. 
+        # Точки, що не існували, заповняться значеннями NaN.
         df_resampled = df.reindex(new_index)
         
         # 3. Інтерполюємо (заповнюємо) пропущені значення NaN лінійно
@@ -61,7 +57,7 @@ def resample_sequence(df: pd.DataFrame, target_length: int) -> pd.DataFrame:
         
         return df_resampled.reset_index(drop=True)
 
-    # якщо даних більше → рівномірно вибираємо точки (цей метод працював правильно)
+    # якщо даних більше - рівномірно вибираємо точки (цей метод працював правильно)
     elif current_length > target_length:
         indices = np.linspace(0, current_length - 1, target_length, dtype=int)
         df_resampled = df.iloc[indices].reset_index(drop=True)
@@ -79,14 +75,13 @@ def load_ai_components():
     try:
         # Перевіряємо наявність всіх необхідних файлів
         if all(os.path.exists(f) for f in [MODEL_NAME, SCALER_NAME, LABELS_NAME]):
-        #if 1 < 0: # Тимчасово вимикаємо перевірку файлів для тестування без моделі
+        #if 1 < 0: # Тимчасово вимикаємо перевірку файлів для навчання без моделі
             scaler = joblib.load(SCALER_NAME)
             print("Скалер завантажено")
             
             classes = np.load(LABELS_NAME, allow_pickle=True)
             print("мітки класів завантажено")
             
-            # Keras/TensorFlow модель завантажується спеціальною функцією
             model = load_model(MODEL_NAME)
             print("Модель Keras завантажена, сервер в режимі розпізнавання")
             return True
@@ -101,14 +96,13 @@ def load_ai_components():
 def get_gesture_data():
     data = request.get_json()
     
-    # --- Валідація вхідних даних ---
     if not data or 'gesture_data' not in data or not data['gesture_data']:
         print("ПОМИЛКА: Неправильний формат даних або порожній масив 'gesture_data'")
         return jsonify({"error": "Bad Request: Invalid format or empty 'gesture_data' array"}), 400
     
     sequence_data = data['gesture_data']
 
-    # Перевірка, що кожен запис має правильну кількість ознак (39)
+    # Перевірка, що кожен запис має правильну кількість ознак (18)
     if len(sequence_data[0]) != EXPECTED_COLUMNS:
         msg = f"ПОМИЛКА: Очікувалось {EXPECTED_COLUMNS} колонок, а отримано {len(sequence_data[0])}"
         print(msg)
@@ -117,7 +111,7 @@ def get_gesture_data():
     df = pd.DataFrame(sequence_data)
     
     if model and scaler and classes is not None:
-        # --- РЕЖИМ РОЗПІЗНАВАННЯ (за новою логікою) ---
+        # --- РЕЖИМ РОЗПІЗНАВАННЯ ---
         try:
             # --- Приведення даних до єдиної довжини ---
             df_resampled = resample_sequence(df, SEQUENCE_LENGTH)
@@ -128,7 +122,7 @@ def get_gesture_data():
             # 2. Масштабуємо дані за допомогою завантаженого скейлера
             data_scaled = scaler.transform(input_data)
             
-            # 3. Додаємо "batch" вимір для моделі: (75, 39) -> (1, 75, 39)
+            # 3. Додаємо "batch" вимір для моделі: (50, 18) -> (1, 75, 39)
             data_for_model = np.expand_dims(data_scaled, axis=0)
             
             # 4. Робимо передбачення
@@ -151,7 +145,7 @@ def get_gesture_data():
             print(f"ПОМИЛКА ПРИ РОЗПІЗНАВАННІ: {e}")
             return jsonify({"error": "Internal Server Error during prediction"}), 500
     else:
-        # --- РЕЖИМ ЗБОРУ ДАНИХ (логіка не змінилась) ---
+        # --- РЕЖИМ ЗБОРУ ДАНИХ ---
         print("Сервер в режимі збору даних, модель не завантажена")
         print(f"Отримано жест з {len(df)} записів")
         
